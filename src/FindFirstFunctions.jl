@@ -94,7 +94,7 @@ Note that this differs from `searchsortedfirst` by returning `nothing` when abse
 function findfirstsortedequal(
     var::Int64,
     vars::DenseVector{Int64},
-    ::Val{basecase} = Base.libllvm_version >= v"17" ? Val(8) : Val(128),
+    ::Val{basecase}=Base.libllvm_version >= v"17" ? Val(8) : Val(128),
 ) where {basecase}
     len = length(vars)
     offset = 0
@@ -200,7 +200,7 @@ its first and last elements, normalized by the range of `v`. If this standard de
 below the given `threshold`, the vector looks linear (return true). Internal function -
 interface may change.
 """
-function looks_linear(v; threshold = 1e-2)
+function looks_linear(v; threshold=1e-2)
     length(v) <= 2 && return true
     x_0, x_f = first(v), last(v)
     N = length(v)
@@ -226,22 +226,28 @@ struct Guesser{T<:AbstractVector}
     linear_lookup::Bool
 end
 
-function Guesser(v::AbstractVector; looks_linear_threshold = 1e-2)
-    Guesser(v, Ref(1), looks_linear(v; threshold = looks_linear_threshold))
+function Guesser(v::AbstractVector; looks_linear_threshold=1e-2)
+    Guesser(v, Ref(1), looks_linear(v; threshold=looks_linear_threshold))
 end
 
 function (g::Guesser)(x)
     (; v, idx_prev, linear_lookup) = g
     if linear_lookup
-        f = (x - first(v)) / (last(v) - first(v))
+        δx = x - first(v)
+        iszero(δx) && return firstindex(v)
+        f = δx / (last(v) - first(v))
         if isinf(f)
             f > 0 ? lastindex(v) : firstindex(v)
         else
             i_0, i_f = firstindex(v), lastindex(v)
-            try
-                round(typeof(firstindex(v)), f * (i_f - i_0) + i_0)
-            catch
-                idx_prev[]
+            i_approx = f * (i_f - i_0) + i_0
+            target_type = typeof(firstindex(v))
+            if i_approx >= typemax(target_type)
+                lastindex(v) + 1
+            elseif i_approx <= typemin(target_type)
+                firstindex(v) - 1
+            else
+                round(target_type, i_approx)
             end
         end
     else
